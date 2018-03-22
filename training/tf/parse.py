@@ -26,6 +26,7 @@ import itertools
 import math
 import multiprocessing as mp
 import numpy as np
+import os
 import queue
 import random
 import shufflebuffer as sb
@@ -34,6 +35,7 @@ import sys
 import tensorflow as tf
 import time
 import threading
+import unittest
 
 # 16 planes, 1 side to move, 1 x 362 probs, 1 winner = 19 lines
 DATA_ITEM_LINES = 16 + 1 + 1 + 1
@@ -50,16 +52,27 @@ DOWN_SAMPLE = 16
 def get_chunks(data_prefix):
     return glob.glob(data_prefix + "*.gz")
 
-def build_chunkgen(chunks):
+class FileDataSrc:
     """
-        generator yielding chunkdata from chunk files.
+        data source yielding chunkdata from chunk files.
     """
-    yield b''  # To ensure that the shuffle happens in child workers.
-    while len(chunks):
-        random.shuffle(chunks)
-        for filename in chunks:
-            with gzip.open(filename, 'rb') as chunk_file:
-                yield chunk_file.read()
+    def __init__(self, chunks):
+        self.chunks = []
+        self.done = chunks
+    def next(self):
+        if not self.chunks:
+            self.chunks, self.done = self.done, self.chunks
+            random.shuffle(self.chunks)
+        if not self.chunks:
+            return None
+        while len(self.chunks):
+            filename = self.chunks.pop()
+            try:
+                with gzip.open(filename, 'rb') as chunk_file:
+                    self.done.append(filename)
+                    return chunk_file.read()
+            except:
+                print("failed to parse {}".format(filename))
 
 def benchmark(parser):
     """
@@ -122,8 +135,8 @@ def main(args):
     print("Training with {0} chunks, validating on {1} chunks".format(
         len(training), len(test)))
 
-    train_parser = ChunkParser(build_chunkgen(training),
-            shuffle_size=1<<19, sample=DOWN_SAMPLE, batch_size=BATCH_SIZE)
+    train_parser = ChunkParser(FileDataSrc(training),
+        shuffle_size=1<<19, sample=DOWN_SAMPLE, batch_size=BATCH_SIZE)
     #benchmark(train_parser)
     dataset = tf.data.Dataset.from_generator(
         train_parser.parse, output_types=(tf.string, tf.string, tf.string))
@@ -131,7 +144,8 @@ def main(args):
     dataset = dataset.prefetch(4)
     train_iterator = dataset.make_one_shot_iterator()
 
-    test_parser = ChunkParser(build_chunkgen(test), batch_size=BATCH_SIZE)
+    test_parser = ChunkParser(FileDataSrc(test),
+        shuffle_size=1<<19, sample=DOWN_SAMPLE, batch_size=BATCH_SIZE)
     dataset = tf.data.Dataset.from_generator(
         test_parser.parse, output_types=(tf.string, tf.string, tf.string))
     dataset = dataset.map(_parse_function)
@@ -150,5 +164,40 @@ def main(args):
         tfprocess.process(BATCH_SIZE)
 
 if __name__ == "__main__":
+    mp.set_start_method('spawn')
     main(sys.argv[1:])
     mp.freeze_support()
+
+# Tests.
+# To run: python3 -m unittest parse.TestParse
+class TestParse(unittest.TestCase):
+    def test_datasrc(self):
+        # create chunk files
+        num_chunks = 3
+        chunks = []
+        for x in range(num_chunks):
+            filename = '/tmp/parse-unittest-chunk'+str(x)+'.gz'
+            chunk_file = gzip.open(filename, 'w', 1)
+            chunk_file.write(bytes(x))
+            chunk_file.close()
+            chunks.append(filename)
+        # create a data src, passing a copy of the
+        # list of chunks.
+        ds = FileDataSrc(list(chunks))
+        # get sample of 200 chunks from the data src
+        counts={}
+        for _ in range(200):
+            data = ds.next()
+            if data in counts:
+                counts[data] += 1
+            else:
+                counts[data] = 1
+        # Every chunk appears at least thrice. Note! This is probabilistic
+        # but the probably of false failure is < 1e-9
+        for x in range(num_chunks):
+            self.assertGreater(counts[bytes(x)], 3)
+        # check that there are no stray chunks
+        self.assertEqual(len(counts.keys()), num_chunks)
+        # clean up: remove temp files.
+        for c in chunks:
+            os.remove(c)
