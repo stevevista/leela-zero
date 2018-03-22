@@ -37,6 +37,9 @@ public:
     void reset_board(int size);
     void display_board(int lastmove = -1);
 
+    // ensure move is legal and not suicide
+    std::uint64_t calc_ko_hash_for_move(const int color, const int i) const;
+
     std::uint64_t m_hash;
     std::uint64_t m_ko_hash;
 };

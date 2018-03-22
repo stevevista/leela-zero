@@ -93,7 +93,8 @@ bool UCTNode::create_children(std::atomic<int>& nodecount,
     auto legal_sum = 0.0f;
     for (const auto& node : raw_netlist.first) {
         auto vertex = node.second;
-        if (state.is_move_legal(to_move, vertex)) {
+        if (state.is_move_legal(to_move, vertex) &&
+            !state.is_superko_move(to_move, vertex)) {
             nodelist.emplace_back(node);
             legal_sum += node.first;
         }

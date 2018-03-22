@@ -148,11 +148,7 @@ SearchResult UCTSearch::play_simulation(GameState & currstate,
             auto move = next->get_move();
 
             currstate.play_move(move);
-            if (move != FastBoard::PASS && currstate.superko()) {
-                next->invalidate();
-            } else {
-                result = play_simulation(currstate, next);
-            }
+            result = play_simulation(currstate, next);
         }
     }
 
@@ -523,7 +519,7 @@ int UCTSearch::think(int color, passflag_t passflag) {
     } else {
         root_eval = m_root->get_eval(color);
     }
-    m_root->kill_superkos(m_rootstate);
+
     if (cfg_noise) {
         // Adjusting the Dirichlet noise's alpha constant to the board size
         auto alpha = 0.03f * 361.0f / BOARD_SQUARES;

@@ -194,3 +194,46 @@ void FullBoard::reset_board(int size) {
     calc_hash();
     calc_ko_hash();
 }
+
+
+std::uint64_t FullBoard::calc_ko_hash_for_move(const int color, const int i) const {
+
+    std::array<int, 4> kills;
+    int n_kills = 0;
+
+    for (int k = 0; k < 4; k++) {
+        int ai = i + m_dirs[k];
+
+        if (m_square[ai] == !color) {
+            if (m_libs[m_parent[ai]] == 1) {
+                bool found = false;
+                for (int n = 0; n < n_kills; n++) {
+                    if (kills[n] == m_parent[ai]) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    kills[n_kills++] = m_parent[ai];
+                }
+            }
+        }
+    }
+
+    auto ko_hash = m_ko_hash;
+    ko_hash ^= Zobrist::zobrist[EMPTY][i];
+    ko_hash ^= Zobrist::zobrist[color][i];
+
+    for (int n = 0; n < n_kills; n++) {
+        int vtx = kills[n];
+        int pos = vtx;
+
+        do {
+            ko_hash ^= Zobrist::zobrist[!color][pos];
+            ko_hash ^= Zobrist::zobrist[EMPTY][pos];
+            pos = m_next[pos];
+        } while (pos != vtx);
+    }
+
+    return ko_hash;
+}

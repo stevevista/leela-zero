@@ -35,6 +35,8 @@ public:
     void play_move(int color, int vertex);
     void play_move(int vertex);
 
+    bool is_superko_move(int color, int vertex) const;
+
 private:
     std::vector<std::uint64_t> m_ko_hash_history;
 };

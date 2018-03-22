@@ -62,3 +62,12 @@ void KoState::play_move(int color, int vertex) {
     }
     m_ko_hash_history.push_back(board.get_ko_hash());
 }
+
+bool KoState::is_superko_move(int color, int vertex) const {
+    if (vertex == FastBoard::PASS ||
+        vertex == FastBoard::RESIGN)
+        return false;
+        
+    auto new_hash = board.calc_ko_hash_for_move(color, vertex);
+    return std::find(cbegin(m_ko_hash_history), cend(m_ko_hash_history), new_hash) != cend(m_ko_hash_history);
+}
